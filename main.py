@@ -296,8 +296,8 @@ def format_company_summary(result: Dict, input_company_name: str, input_emirate:
     formatted.append(f"• Business Name: {business_name}")
     
     
-    similarity = calculate_name_similarity(input_company_name, business_name)
-    similarity_percentage = round(similarity * 100, 2)
+    similarity = legitimacy['breakdown']['name_similarity']
+    similarity_percentage = round(similarity, 2)
     similarity_color = GREEN if similarity >= COLOR_THRESHOLDS['green'] else YELLOW if similarity >= COLOR_THRESHOLDS['yellow'] else RED
     formatted.append(f"• Name Match: {similarity_color}{similarity_percentage}%{RESET}")
     
@@ -596,8 +596,8 @@ def format_news_article(article: Dict) -> str:
 def format_for_csv(result: Dict, input_company_name: str, input_emirate: str = None) -> Dict:
     
     legitimacy = calculate_business_legitimacy(result, input_company_name)
-    
-    
+
+
     hours = result.get('current_opening_hours', {})
     hours_text = format_opening_hours(hours)
     
@@ -618,8 +618,8 @@ def format_for_csv(result: Dict, input_company_name: str, input_emirate: str = N
         'search_company_name': input_company_name,
         'search_emirate': input_emirate if input_emirate else 'N/A',
         'business_name': result.get('name', 'N/A'),
-        'name_match_percentage': round(legitimacy['breakdown']['name_similarity'], 2),
-        'website_match_percentage': round(legitimacy['breakdown']['website_similarity'], 2),
+        'name_match_percentage': legitimacy['breakdown']['name_similarity'] ,
+        'website_match_percentage': legitimacy['breakdown']['website_similarity'],
         'legitimacy_score': legitimacy['total_score'],
         'legitimacy_level': legitimacy['legitimacy_level'],
         
@@ -677,20 +677,18 @@ def format_for_csv(result: Dict, input_company_name: str, input_emirate: str = N
         fuzzy_weight = legitimacy['weights'].get(factor, weight)
         
         csv_data[f'{factor}_score'] = round(score, 2)
-        csv_data[f'{factor}_base_weight'] = weight
-        csv_data[f'{factor}_fuzzy_weight'] = round(fuzzy_weight, 2)
-        csv_data[f'{factor}_weight_adjustment'] = round(fuzzy_weight - weight, 2)
+
     
     return csv_data
 
-def save_summary_to_csv(results: List[Dict], input_company_name: str, input_emirate: str = None, output_file: str = None) -> str:
+def save_summary_to_csv(results: List[Dict], output_file: str = None) -> str:
 
     if not output_file:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_file = f"company_summary_{timestamp}.csv"
     
     
-    csv_data = [format_for_csv(result, input_company_name, input_emirate) for result in results]
+    csv_data = [format_for_csv(result, result['company_name'], result['emirate']) for result in results]
     
     if not csv_data:
         return ""
@@ -760,6 +758,7 @@ def main():
         all_detailed_results = []
         all_news = []
         all_summaries = []
+        all_summaries_txt = []
         seen_urls = set()
 
         
@@ -779,6 +778,8 @@ def main():
                 for place in maps_results:
                     print(f"Getting details for: {place.get('name', 'Unknown')}")
                     details = maps_scraper.get_place_details(place['place_id'])
+                    details['company_name'] = company_name
+                    details['emirate'] = emirate
                     if details:
                         if emirate:
                             details['emirate_validation'] = maps_scraper.validate_emirate(details, emirate)
@@ -794,7 +795,9 @@ def main():
                 
                 for result in detailed_results:
                     console_summary = format_company_summary(result, company_name, emirate, plain_text=False)
+                    console_summary_txt = format_company_summary(result, company_name, emirate, plain_text=True)
                     all_summaries.append(console_summary)
+                    all_summaries_txt.append(console_summary_txt)
                     print(console_summary)
                     print("-" * 50)
 
@@ -821,12 +824,12 @@ def main():
                 print(f"\nAll company data saved to: {maps_output_file}")
             
             
-            csv_output_file = save_summary_to_csv(all_detailed_results, "all_companies", None, args.csv)
+            csv_output_file = save_summary_to_csv(all_detailed_results, args.csv)
             if csv_output_file:
                 print(f"All company summaries saved to: {csv_output_file}")
             
             
-            combined_summary = "\n\n".join(all_summaries)
+            combined_summary = "\n\n".join(all_summaries_txt)
             summary_file = save_summary_to_file(combined_summary, "all_companies", args.summary)
             if summary_file:
                 print(f"All company summaries saved to: {summary_file}")
